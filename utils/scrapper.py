@@ -1,44 +1,32 @@
-import io
 import os
 from datetime import datetime, timedelta
 from apify_client import ApifyClient
-from dotenv import load_dotenv
 import pandas as pd
 import streamlit as st
+from dotenv import load_dotenv
 
+# Force environment variables to load immediately before anything else reads them
 load_dotenv()
-APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
-# Web Page Metadata Setup
-st.set_page_config(
-    page_title="FB Analytics Downloader", 
-    page_icon="favicon.png", 
-    layout="centered"
-)
-st.title("Facebook Post Analytics Tool by NDHM")
-st.write("Enter a public Facebook page link to extract real-time metrics into Excel.")
-
-
-# Modal Confirmation Popup
-@st.dialog("Confirm Extraction Request")
-def confirm_extraction_popup(url, limit):
-    st.write("Are you sure you want to run analytics for this target?")
-    st.markdown(f"**Page:** `{url}`")
-    st.markdown(f"**Post Limit:** `{limit} posts`")
-    st.write("This operation will use Apify API credits to fetch live metrics.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Yes, Start Scrape", type="primary", use_container_width=True):
-            st.session_state.trigger_scrape = True
-            st.rerun()
-    with col2:
-        if st.button("Cancel", use_container_width=True):
-            st.rerun()
+def get_apify_client():
+    # 1. Try local system environment (.env file)
+    token = os.getenv("APIFY_TOKEN")
+    
+    # 2. Alternate fallback to Streamlit Secrets
+    if not token:
+        token = st.secrets.get("APIFY_TOKEN")
+        
+    if not token:
+        st.error("Missing Apify API Key! Make sure your Streamlit Secrets or .env file contains APIFY_TOKEN.")
+        return None
+        
+    return ApifyClient(token)
 
 
 def get_live_follower_count(client, page_url, status_container):
-    status_container.info("Fetching live follower count from page profile metadata...")
+    status_container.info(
+        "Fetching live follower count from page profile metadata..."
+    )
     try:
         page_input = {"startUrls": [{"url": page_url}]}
         page_run = client.actor("apify/facebook-pages-scraper").call(
@@ -49,8 +37,7 @@ def get_live_follower_count(client, page_url, status_container):
         )
 
         if page_items and "followerCount" in page_items[0]:
-            followers = int(page_items[0]["followerCount"])
-            return followers
+            return int(page_items[0]["followerCount"])
         elif page_items and "likes" in page_items[0]:
             return int(page_items[0]["likes"])
     except Exception as e:
@@ -59,18 +46,15 @@ def get_live_follower_count(client, page_url, status_container):
 
 
 def scrape_public_posts(page_url, max_posts, status_container):
-    if not APIFY_TOKEN:
-        st.error(
-            "Missing Apify API Key! Make sure your Streamlit Secrets or .env file contains APIFY_TOKEN."
-        )
+    # Dynamically fetch the client securely on execution runtime
+    client = get_apify_client()
+    if not client:
         return None
 
-    client = ApifyClient(APIFY_TOKEN)
-
-    # Fetch live followers
     total_followers = get_live_follower_count(
         client, page_url, status_container
     )
+
     if total_followers > 0:
         status_container.success(
             f"Live Follower Count Found: {total_followers:,}"
@@ -80,7 +64,6 @@ def scrape_public_posts(page_url, max_posts, status_container):
             "Follower count unavailable. Engagement rate will show as 0%."
         )
 
-    # Run post scraper
     status_container.info(
         "Sending scrape request to Facebook Posts Scraper... Gathering data (takes 1-2 mins)..."
     )
@@ -170,48 +153,3 @@ def scrape_public_posts(page_url, max_posts, status_container):
         )
 
     return pd.DataFrame(rows)
-
-
-fb_url = st.text_input(
-    "Facebook Page URL:",
-    value="https://www.facebook.com/chupachupsvietnam",
-)
-post_limit = st.slider(
-    "Number of posts to fetch:", min_value=1, max_value=50, value=3
-)
-
-if "trigger_scrape" not in st.session_state:
-    st.session_state.trigger_scrape = False
-
-if st.button("🚀 Run Extraction", use_container_width=True):
-    if not fb_url.strip():
-        st.warning("Please enter a valid Facebook URL first.")
-    else:
-        confirm_extraction_popup(fb_url, post_limit)
-
-if st.session_state.trigger_scrape:
-    st.session_state.trigger_scrape = False
-
-    status = st.empty()
-    df_result = scrape_public_posts(fb_url, post_limit, status)
-
-    if df_result is not None and not df_result.empty:
-        status.success("Scrape complete! Your spreadsheet file is ready below.")
-
-        st.dataframe(df_result.head(10))
-
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-            df_result.to_excel(writer, index=False)
-
-        st.download_button(
-            label="📥 Download Excel Spreadsheet",
-            data=buffer.getvalue(),
-            file_name="fb_page_analytics.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-    else:
-        status.error(
-            "The system returned a blank dataset. Ensure the target page is fully public and try again."
-        )
