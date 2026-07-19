@@ -11,7 +11,9 @@ APIFY_TOKEN = os.getenv("APIFY_TOKEN")
 
 # Web Page Metadata Setup
 st.set_page_config(
-    page_title="FB Analytics Downloader", page_icon="📊", layout="centered"
+    page_title="FB Analytics Downloader", 
+    page_icon="8.png", 
+    layout="centered"
 )
 st.title("📊 Facebook Page Analytics Tool by NDHM")
 st.write("Enter a public Facebook page link to extract real-time metrics into Excel.")
