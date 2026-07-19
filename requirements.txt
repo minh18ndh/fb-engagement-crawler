@@ -3,3 +3,4 @@ pandas
 requests
 apify-client
 openpyxl
+python-dotenv
