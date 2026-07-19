@@ -5,14 +5,11 @@ import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 
-# Force environment variables to load immediately before anything else reads them
 load_dotenv()
 
 def get_apify_client():
-    # 1. Try local system environment (.env file)
     token = os.getenv("APIFY_TOKEN")
     
-    # 2. Alternate fallback to Streamlit Secrets
     if not token:
         token = st.secrets.get("APIFY_TOKEN")
         
@@ -46,7 +43,6 @@ def get_live_follower_count(client, page_url, status_container):
 
 
 def scrape_public_posts(page_url, max_posts, status_container):
-    # Dynamically fetch the client securely on execution runtime
     client = get_apify_client()
     if not client:
         return None
